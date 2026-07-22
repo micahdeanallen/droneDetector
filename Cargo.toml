@@ -1,0 +1,22 @@
+[package]
+name = "drone_detection_pipeline"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
+ndarray = "0.17"
+gstreamer = "0.23"
+gstreamer-app = "0.23"
+image = "0.25"
+crossbeam-channel = "0.5"
+anyhow = "1"
+
+[features]
+cuda = ["ort/cuda"]
+tensorrt = ["ort/tensorrt"]
+load-dynamic = ["ort/load-dynamic"]
+
+[profile.release]
+opt-level = 3
+lto = true
