@@ -36,7 +36,7 @@ impl Detector {
             providers.push(TensorRTExecutionProvider::default().build());
         }
         if use_cuda {
-            providers.push(CUDAExecutionProvider::default().build());
+            providers.push(CUDAExecutionProvider::default().build().error_on_failure());
         }
         providers.push(CPUExecutionProvider::default().build());
         let builder = Session::builder()

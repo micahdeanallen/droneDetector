@@ -38,6 +38,8 @@ fn print_usage() {
   --at <lat>,<lon>        hardcode position, skip the GPS device entirely
                           (use this on the PC, where there's no receiver)
   --profile               print per-stage timings
+  --cuda                  register the CUDA execution provider
+  --trt                   register the TensorRT EP (falls back to CUDA per-op)
   --help"
     );
 }
@@ -51,6 +53,8 @@ fn main() -> Result<()> {
     let mut enable_gps = false;
     let mut manual_pos: Option<(f64, f64)> = None;
     let mut profile = false;
+    let mut use_cuda = false;
+    let mut use_trt = false;
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
@@ -74,6 +78,8 @@ fn main() -> Result<()> {
             "--jetson-cam" => jetson_cam = true,
             "--gps" => enable_gps = true,
             "--profile" => profile = true,
+            "--cuda" => use_cuda = true,
+            "--trt" => use_trt = true,
             "--help" | "-h" => {
                 print_usage();
                 return Ok(());
@@ -144,8 +150,6 @@ fn main() -> Result<()> {
     
     let (tx, rx) = unbounded::<DetectionResult>();
     std::thread::spawn(move || {
-        let use_cuda = cfg!(feature = "cuda");
-        let use_trt = cfg!(feature = "tensorrt");
         let mut detector = detect::Detector::new(
             &model_path,
             CONF_THRESH,
