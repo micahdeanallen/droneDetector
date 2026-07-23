@@ -1,2 +1,5 @@
 /target
 /models/*.onnx
+/venv
+/lib
+build.log

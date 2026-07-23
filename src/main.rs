@@ -5,7 +5,7 @@ mod track;
 mod types;
 use std::sync::Arc;
 use std::time::Duration;
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, anyhow};
 use crossbeam_channel::unbounded;
 use crate::capture::Source;
 use crate::types::{DetectionResult, FrameQueue, GpsFix};
@@ -43,6 +43,7 @@ fn print_usage() {
 }
 
 fn main() -> Result<()> {
+    ort::init().with_name("drone_pipeline").commit();
     // Hand-rolled arg parsing; not worth a dependency for seven flags.
     let mut source_arg = String::from("camera");
     let mut model_path = String::from(DEFAULT_MODEL);

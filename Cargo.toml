@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-20"] }
 ndarray = "0.17"
 gstreamer = "0.23"
 gstreamer-app = "0.23"

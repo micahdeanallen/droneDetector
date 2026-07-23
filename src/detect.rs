@@ -44,12 +44,7 @@ impl Detector {
         let builder = builder
             .with_execution_providers(providers)
             .map_err(|e| anyhow!("failed to register execution providers: {e}"))?;
-        let builder = builder
-            .with_optimization_level(GraphOptimizationLevel::Level3)
-            .map_err(|e| anyhow!("failed to set optimization level: {e}"))?;
-        let mut builder = builder
-            .with_intra_threads(4)
-            .map_err(|e| anyhow!("failed to set intra threads: {e}"))?;
+        let mut builder = builder;
         let session = builder
             .commit_from_file(model_path)
             .map_err(|e| anyhow!("failed to load model at {model_path}: {e}"))?;

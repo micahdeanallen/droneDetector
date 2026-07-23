@@ -36,7 +36,7 @@ fn pipeline_for(source: &Source) -> String {
                 None => format!("video/x-raw,width={width},height={height},framerate={fps}/1")
             };
             format!(
-                "v412src device={device} ! {caps} \
+                "v4l2src device={device} ! {caps} \
                 ! videoconvert ! video/x-raw,format=RGBA \
                 ! appsink name=sink drop=true max-buffers=1 sync=false"
             )
@@ -70,14 +70,31 @@ pub fn run_capture(source: Source, queue: Arc<FrameQueue>) -> Result<()> {
         .context("no element named 'sink' in pipeline")?
         .downcast::<AppSink>()
         .map_err(|_| anyhow!("'sink' element is not an appsink"))?;
+    appsink.set_property("async", false);
     
     pipeline.set_state(gst::State::Playing).context("failed to start pipeline (is the device present?)")?;
 
     let started = std::time::Instant::now();
     let mut seq: u64 = 0;
+    let mut waited_ms: u64 = 0;
     loop {
         // Allows the system to sleep until frame is available; Err or EOS or teardown
-        let Ok(sample) = appsink.pull_sample() else { break; };
+        let sample = match appsink.try_pull_sample(gst::ClockTime::from_mseconds(100)) {
+            Some(sample) => {
+                waited_ms = 0;
+                sample
+            }
+            None => {
+                if appsink.is_eos() {
+                    break;
+                }
+                waited_ms += 100;
+                if waited_ms >= 15_000 {
+                    return Err(anyhow!("no frames from source within 15s (check dmesg / reseat CAM1 ribbon)"));
+                }
+                continue;
+            }
+        };
 
         let caps = sample.caps().context("sample had no captures")?;
         let s = caps.structure(0).context("captures had no structure")?;
