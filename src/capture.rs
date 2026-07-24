@@ -13,7 +13,8 @@ pub enum Source {
         width: u32,
         height: u32,
         fps: u32,
-        format: Option<String> // UYVY for Arducam AR0234; None on PC webcam
+        format: Option<String>, // UYVY for Arducam AR0234; None on PC webcam
+        hw_scale: Option<(u32, u32)> // VIC downscale target; None uses the CPU videoconvert path
     },
     VideoFile(String),
     Image(String)
@@ -30,16 +31,24 @@ impl Source {
 // RGBA from caps filter so there isn't row-stride padding, stripping alpha to RGB.
 fn pipeline_for(source: &Source) -> String {
     match source {
-        Source::Camera { device, width, height, fps, format } => {
+        Source::Camera { device, width, height, fps, format, hw_scale } => {
             let caps = match format {
                 Some(f) => format!("video/x-raw,format={f},width={width},height={height},framerate={fps}/1"),
                 None => format!("video/x-raw,width={width},height={height},framerate={fps}/1")
             };
-            format!(
-                "v4l2src device={device} ! {caps} \
-                ! videoconvert ! video/x-raw,format=RGBA \
-                ! appsink name=sink drop=true max-buffers=1 sync=false"
-            )
+            match hw_scale {
+                Some((sw, sh)) => format!(
+                    "v4l2src device={device} ! {caps} \
+                    ! nvvidconv ! video/x-raw(memory:NVMM),format=NV12,width={sw},height={sh} \
+                    ! nvvidconv ! video/x-raw,format=RGBA \
+                    ! appsink name=sink drop=true max-buffers=1 sync=false"
+                ),
+                None => format!(
+                    "v4l2src device={device} ! {caps} \
+                    ! videoconvert ! video/x-raw,format=RGBA \
+                    ! appsink name=sink drop=true max-buffers=1 sync=false"
+                )
+            }
         }
         Source::VideoFile(path) => format!(
             "filesrc location=\"{path}\" ! decodebin ! videoconvert \

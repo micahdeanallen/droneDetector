@@ -114,10 +114,15 @@ fn main() -> Result<()> {
 
     let source = if source_arg == "camera" {
         let (device, width, height, fps, format) = if jetson_cam { JETSON_CAMERA } else { PC_CAMERA };
+        let hw_scale = if jetson_cam {
+            let s = (detect::INPUT_SIZE as f32 / width as f32).min(detect::INPUT_SIZE as f32 / height as f32);
+            Some(((width as f32 * s).round() as u32, (height as f32 * s).round() as u32))
+        } else {  None };
         Source::Camera {
             device: device.to_string(),
             width, height, fps,
-            format: format.map(|s| s.to_string())
+            format: format.map(|s| s.to_string()),
+            hw_scale
         }
     } else {
         let lower = source_arg.to_lowercase();

@@ -9,7 +9,7 @@ use crate::types::{Detection, Frame};
 
 // Detection pipeline that owns ONNX runtime session and runs one frame end to end:
 // letterbox -> NCHW f32 tensor -> ort inference -> decode -> NMS -> Detections
-const INPUT_SIZE: usize = 960;
+pub const INPUT_SIZE: usize = 640;
 const PAD_VALUE: u8 = 114;
 const INPUT_NAME: &str = "images";
 const OUTPUT_NAME: &str = "output0";
@@ -60,7 +60,11 @@ impl Detector {
         let new_h = (frame.height as f32 * scale).round() as u32;
         let pad_x = (INPUT_SIZE as u32 - new_w) / 2;
         let pad_y = (INPUT_SIZE as u32 - new_h) / 2;
-        let resized = image::imageops::resize(&src, new_w, new_h, FilterType::Triangle);
+        let resized = if new_w == frame.width as u32 && new_h == frame.height as u32 {
+            src
+        } else {
+            image::imageops::resize(&src, new_w, new_h, FilterType::Triangle)
+        };
         let mut input = Array4::<f32>::from_elem((1, 3, INPUT_SIZE, INPUT_SIZE), PAD_VALUE as f32 / 255.0);
         for y in 0..new_h {
             for x in 0..new_w {
@@ -105,6 +109,10 @@ impl Detector {
             let y = (cy - bh / 2.0 - pad_y as f32) / scale;
             let w = bw / scale;
             let h = bh / scale;
+            // Reject boxes centered in letterbox padding, which produces ghost detections outside
+            // of frame
+            if cx < pad_x as f32 || cx > (pad_x + new_w) as f32 { continue; }
+            if cy < pad_y as f32 || cy > (pad_y + new_h) as f32 { continue; }
             dets.push(Detection { 
                 class_id: best_id, 
                 confidence: best_score, 
