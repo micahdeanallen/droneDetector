@@ -3,6 +3,7 @@ mod detect;
 mod gps;
 mod track;
 mod types;
+mod net;
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::{Result, bail, anyhow};
@@ -37,6 +38,8 @@ fn print_usage() {
   --gps                   acquire position once from {GPS_DEVICE} at startup
   --at <lat>,<lon>        hardcode position, skip the GPS device entirely
                           (use this on the PC, where there's no receiver)
+  --dashboard <ip:port>   pipeline sends creates connection with dashboard using given
+                          IP address/port and sends payload
   --profile               print per-stage timings
   --cuda                  register the CUDA execution provider
   --trt                   register the TensorRT EP (falls back to CUDA per-op)
@@ -49,12 +52,14 @@ fn main() -> Result<()> {
     // Hand-rolled arg parsing; not worth a dependency for seven flags.
     let mut source_arg = String::from("camera");
     let mut model_path = String::from(DEFAULT_MODEL);
+    let mut dashboard = false;
     let mut jetson_cam = false;
     let mut enable_gps = false;
     let mut manual_pos: Option<(f64, f64)> = None;
     let mut profile = false;
     let mut use_cuda = false;
     let mut use_trt = false;
+    let mut dashboard_addr: Option<String> = None;
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
@@ -74,6 +79,11 @@ fn main() -> Result<()> {
                 let Some(v) = args.get(i) else { bail!("--at needs <lat>,<lon>") };
                 let Some((a, b)) = v.split_once(',') else { bail!("--at expects <lat>,<lon>") };
                 manual_pos = Some((a.trim().parse()?, b.trim().parse()?));
+            }
+            "--dashboard" => {
+                i += 1;
+                let Some(v) = args.get(i) else { bail!("--dashboard needs <ip:port>") };
+                dashboard_addr = Some(v.clone());
             }
             "--jetson-cam" => jetson_cam = true,
             "--gps" => enable_gps = true,
@@ -111,6 +121,19 @@ fn main() -> Result<()> {
         ),
         None => eprintln!("postion: unknown -- detection runs, dashboard has no anchor")
     }
+
+    let telementry = match (&dashboard_addr, &position) {
+        (Some(addr), Some(anchor)) => {
+            net::spawn(addr, anchor.clone(), 640, 400, 8)
+                .map_err(|e| println!("dashboard: bind failed on {addr}: {e}"))
+                .ok()
+        }
+        (Some(_), None) => {
+            eprintln!("dashboard: no GPS anchor (needs --gps or --at); telementry diabled");
+            None
+        }
+        (None, _) => None
+    };
 
     let source = if source_arg == "camera" {
         let (device, width, height, fps, format) = if jetson_cam { JETSON_CAMERA } else { PC_CAMERA };
@@ -196,6 +219,9 @@ fn main() -> Result<()> {
             "seq {:>6} | {} object(s), {} drone(s)",
             result.seq, result.total_objects, result.drone_count
         );
+        if let Some(sink) = &telementry {
+            sink.offer(net::extract(&result));
+        }
         for t in &result.tracks {
             let name = CLASS_NAMES.get(t.class_id).copied().unwrap_or("?");
             let tag = if t.is_drone { "DRONE" } else { "not-drone" };
