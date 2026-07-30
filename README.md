@@ -94,7 +94,7 @@ gets no anchor.
 
 ```bash
 ./target/release/drone_detection_pipeline --source camera --jetson-cam --cuda --gps
-./target/release/drone_detection_pipeline --source camera --jetson-cam --cuda --at 33.4992,-117.7071   # manual anchor, no sky needed
+./target/release/drone_detection_pipeline --source camera --jetson-cam --cuda --at <lat>,<lon>   # manual anchor, no sky needed
 ```
 
 The serial device is group-owned by `dialout`. Add your user once, or every run
