@@ -157,6 +157,7 @@ transfer that can never stall the detection loop.
 
 Wire format — a header once per connection, then one line per frame only when
 objects are present:
+
 HEADER:  {"lat": <lat>, "lon": <lon>, "w": 640, "h": 400}
 FRAME:   {"n": <objects>, "d": <drones>, "o": [[id, drone, px, py, vx, vy], ...]}
 
