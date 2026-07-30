@@ -104,6 +104,8 @@ fails with a permission error:
 sudo usermod -aG dialout $USER   # then log out and back in
 ```
 
+---
+
 ## Performance
 
 Measured on the Jetson against the live camera, clocks pinned.
@@ -158,13 +160,17 @@ transfer that can never stall the detection loop.
 Wire format — a header once per connection, then one line per frame only when
 objects are present:
 
+```
 HEADER:  {"lat": <lat>, "lon": <lon>, "w": 640, "h": 400}
 FRAME:   {"n": <objects>, "d": <drones>, "o": [[id, drone, px, py, vx, vy], ...]}
+```
 
 Predicted paths are **not** transmitted — the receiver reconstructs them from
 `(px,py)` and `(vx,vy)`, since velocity fully determines the constant-velocity
 future at any horizon. The pipeline still computes prediction for its headless
 console output.
+
+---
 
 ## Dashboard (optional)
 
@@ -190,6 +196,8 @@ python3 dashboard.py <jetson_ip:port>
   predicted path. Placement uses a calibrated sensor-to-map transform derived
   empirically from known-direction motion (a 90° rotation with both axes
   inverted, for this mount).
+
+---
 
 ## Mandatory Configurations that Cost Real Time
 
