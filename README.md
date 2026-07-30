@@ -1,7 +1,7 @@
 # Drone Detection Pipeline
 
-Real-time drone detection on a Jetson Orin Nano, written in Rust. Capture →
-YOLOv8s inference (ONNX Runtime) → multi-object tracking → GPS-anchored output.
+Real-time drone detection on a Jetson Orin Nano, written in Rust. Capture → YOLOv8s inference (ONNX Runtime) 
+→ multi-object tracking → GPS anchoring → optional live telemetry to a local dashboard.
 Classifies drone / bird / airplane / helicopter so that non-drone aerial objects
 are rejected rather than counted.
 
@@ -84,6 +84,26 @@ so backtests are unaffected by this change.
 
 ---
 
+## GPS anchoring
+
+A USB u-blox receiver provides the station's fixed position, read once at
+startup via NMEA GGA sentences (`gps.rs`). The pipeline gates on a valid fix
+(field 6 ≥ 1) with a minimum satellite count before accepting a position;
+without a fix it degrades gracefully — detection still runs, the dashboard just
+gets no anchor.
+
+```bash
+./target/release/drone_detection_pipeline --source camera --jetson-cam --cuda --gps
+./target/release/drone_detection_pipeline --source camera --jetson-cam --cuda --at 33.4992,-117.7071   # manual anchor, no sky needed
+```
+
+The serial device is group-owned by `dialout`. Add your user once, or every run
+fails with a permission error:
+
+```bash
+sudo usermod -aG dialout $USER   # then log out and back in
+```
+
 ## Performance
 
 Measured on the Jetson against the live camera, clocks pinned.
@@ -114,6 +134,61 @@ At 24.6ms the pipeline is **capture-bound**: it can sustain ~40 fps against a
 30 fps camera, with ~8ms of slack per frame and no dropped frames.
 
 ---
+
+## Telemetry protocol
+
+With `--dashboard <ip:port>`, the pipeline serves a live telemetry stream to a
+single dashboard client. The design goal is airtight, minimal information
+transfer that can never stall the detection loop.
+
+- **Transport:** raw TCP, newline-delimited JSON. TCP (not UDP) because dropped
+  detections are unacceptable; newline framing makes the byte stream
+  self-synchronizing for a late or reconnecting client.
+- **Single client, actively refused:** one dashboard is served at a time; a
+  second connection receives `{"error":"busy"}` and is closed immediately
+  rather than queued. An `AtomicBool` slot with atomic swap enforces this
+  without a lock.
+- **Non-blocking:** telemetry is handed to a dedicated sender thread over a
+  bounded channel with `try_send`. If the dashboard is slow or absent, frames
+  are dropped rather than backpressuring detection. Detection is guaranteed;
+  telemetry is best-effort.
+- **Bind address is required configuration** (`--dashboard <ip:port>`), never
+  hardcoded, so nothing machine-specific ships in the repo.
+
+Wire format — a header once per connection, then one line per frame only when
+objects are present:
+HEADER:  {"lat": <lat>, "lon": <lon>, "w": 640, "h": 400}
+FRAME:   {"n": <objects>, "d": <drones>, "o": [[id, drone, px, py, vx, vy], ...]}
+
+Predicted paths are **not** transmitted — the receiver reconstructs them from
+`(px,py)` and `(vx,vy)`, since velocity fully determines the constant-velocity
+future at any horizon. The pipeline still computes prediction for its headless
+console output.
+
+## Dashboard (optional)
+
+A local Python/pygame viewer (`dashboard/`) renders the telemetry stream over a
+satellite backdrop. The pipeline runs fully headless without it; the dashboard
+is a pure client.
+
+```bash
+cd dashboard && pip install -r requirements.txt
+python3 dashboard.py <jetson_ip:port>
+```
+
+- **Security posture:** the dashboard listens on nothing. Its only sockets are
+  outbound — one to the pipeline, and (once, at startup) tile fetches to the map
+  provider. Zero inbound surface.
+- **Satellite backdrop:** Esri World Imagery tiles are fetched, stitched, and
+  cropped to exactly the coverage footprint using Web Mercator projection
+  (`tiles.py`). The crop is cached to disk, so tiles are fetched once and the
+  dashboard works offline thereafter.
+- **Coverage footprint:** the frame maps to a ground patch sized by the camera
+  FOV (110°×82°) at an assumed operating altitude — ~285 m × 174 m at 150 m.
+- **Objects:** red dots are drones, grey are other objects; click one to see its
+  predicted path. Placement uses a calibrated sensor-to-map transform derived
+  empirically from known-direction motion (a 90° rotation with both axes
+  inverted, for this mount).
 
 ## Mandatory Configurations that Cost Real Time
 
